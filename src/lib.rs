@@ -8,3 +8,5 @@
 //! (see `qol_plugin_api::restore::RestoreClaim`).
 //!
 //! See `docs/adr/KITTY-1-build-plugin-kitty-terminal-lifecycle.md`.
+
+pub mod registry;

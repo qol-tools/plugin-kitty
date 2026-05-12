@@ -15,8 +15,9 @@
 //! file-on-disk -> typed Registry mapping with cap-std sandboxing.
 //!
 //! Refs:
-//! - workspace/docs/superpowers/specs/2026-05-12-terminal-workspace-restore-design.md (Restore templates section)
-//! - workspace/docs/superpowers/plans/2026-05-12-terminal-workspace-restore-security-plan.md (cards 01, 03, 04)
+//!   - workspace/docs/superpowers/specs/2026-05-12-terminal-workspace-restore-design.md (Restore templates section)
+//!   - workspace/docs/superpowers/plans/2026-05-12-terminal-workspace-restore-security-plan.md (cards 01, 03, 04)
+//!
 //! Closes: KITTY-1.6, KITTY-1.3 (workspace-state-on-disk pre-reqs).
 
 use cap_std::ambient_authority;
@@ -69,8 +70,7 @@ required = true
         "required=true round-trip lost; design spec requires the loader to preserve it"
     );
     assert_eq!(
-        uuid_spec.regex,
-        "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        uuid_spec.regex, "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
         "regex pattern lost in the loader; the slot's structural bound on params is the regex"
     );
 }
@@ -136,10 +136,7 @@ argv = ["sh", "-l", "-c", "cd {pane_cwd}; exec sh"]
     let registry = Registry::load(&dir, name).expect("built-in slot {pane_cwd} must load");
     let template = registry.get("shell-cwd").expect("template missing");
     assert!(
-        template
-            .argv
-            .iter()
-            .any(|a| a.contains("{pane_cwd}")),
+        template.argv.iter().any(|a| a.contains("{pane_cwd}")),
         "built-in slot was rewritten or stripped"
     );
 }
