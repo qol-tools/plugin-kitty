@@ -1,0 +1,7 @@
+config.json
+*.log
+.DS_Store
+target/
+plugin-kitty
+plugin-kitty.new
+.cargo/config.toml

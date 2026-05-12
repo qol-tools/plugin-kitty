@@ -1,0 +1,11 @@
+name: Rust CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    uses: qol-tools/qol-cicd/.github/workflows/plugin-ci.yml@main
