@@ -11,13 +11,8 @@ regex = "1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
-# Pinned to the API-1 feature branch carrying RestoreClaim / PaneSnapshot /
-# RestoreRuleCapability. Follow-up unpin commit once API-1 merges to main.
-qol-plugin-api = { git = "https://github.com/qol-tools/qol-plugin-api", branch = "api-1-define-restore-rule-contract-types-and-capabilitie", default-features = false }
-# Pinned to the RUNTIME-1 feature branch carrying the PaneField wire
-# vocabulary that the template registry maps to. Follow-up unpin commit
-# once RUNTIME-1 merges to main.
-qol-runtime = { git = "https://github.com/qol-tools/qol-runtime", branch = "runtime-1-af-unix-broker-with-peer-cred-auth-and-pull-pane-f" }
+qol-plugin-api = { git = "https://github.com/qol-tools/qol-plugin-api", default-features = false }
+qol-runtime = { git = "https://github.com/qol-tools/qol-runtime" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Apple codesign verification of the resolved kitty binary. Linux uses
