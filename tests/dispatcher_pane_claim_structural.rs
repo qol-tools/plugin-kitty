@@ -28,9 +28,7 @@ use std::path::PathBuf;
 
 use qol_plugin_api::restore::{ForegroundProc, PaneSnapshot, RestoreClaim};
 
-use plugin_kitty::dispatcher::{
-    dispatch_pane, ClaimResponse, DispatchOutcome, PluginRegistration,
-};
+use plugin_kitty::dispatcher::{dispatch_pane, ClaimResponse, DispatchOutcome, PluginRegistration};
 
 fn snapshot() -> PaneSnapshot {
     PaneSnapshot {
@@ -178,13 +176,13 @@ fn dispatcher_does_not_send_to_plugins_that_did_not_declare_the_template() {
         },
     ];
     let mut visited: Vec<String> = Vec::new();
-    let visited_ref = std::cell::RefCell::new(&mut visited);
-    let transport = |plugin_id: &str, _: &PaneSnapshot| -> ClaimResponse {
-        visited_ref.borrow_mut().push(plugin_id.to_string());
-        ClaimResponse::NoOpinion
-    };
-    let _ = dispatch_pane(&plugins, "claude-session", &snapshot(), transport);
-    drop(visited_ref);
+    {
+        let transport = |plugin_id: &str, _: &PaneSnapshot| -> ClaimResponse {
+            visited.push(plugin_id.to_string());
+            ClaimResponse::NoOpinion
+        };
+        let _ = dispatch_pane(&plugins, "claude-session", &snapshot(), transport);
+    }
     assert_eq!(
         visited,
         vec!["plugin-claude-sessions"],

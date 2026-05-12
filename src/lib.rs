@@ -9,5 +9,6 @@
 //!
 //! See `docs/adr/KITTY-1-build-plugin-kitty-terminal-lifecycle.md`.
 
+pub mod dispatcher;
 pub mod registry;
 pub mod resolver;
