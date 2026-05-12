@@ -45,9 +45,12 @@ pub struct ParamSpec {
 /// One template entry in the registry.
 ///
 /// `argv` is preserved verbatim from the on-disk TOML; substitution
-/// happens elsewhere. `params` maps slot name to `ParamSpec`. The
-/// `dangerous` flag (`sh`/`bash`/`eval`/...) is computed by a separate
-/// pass and not represented here.
+/// happens elsewhere. `params` maps slot name to `ParamSpec`.
+/// `match_exe` lists the foreground executable basenames whose panes
+/// the resolver will assign to this template; an empty list means the
+/// template is never picked automatically (it can still be invoked by
+/// an explicit reference). The `dangerous` flag (`sh`/`bash`/`eval`)
+/// is computed by a separate pass and not represented here.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Template {
@@ -57,6 +60,10 @@ pub struct Template {
     pub pre_check: Option<Vec<String>>,
     #[serde(default)]
     pub params: BTreeMap<String, ParamSpec>,
+    /// Foreground exe basenames this template wants to claim.
+    /// Empty == not auto-resolvable (still loadable for reference).
+    #[serde(default)]
+    pub match_exe: Vec<String>,
 }
 
 /// The on-disk shape: `[template.<id>]` sections.
