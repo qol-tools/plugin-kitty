@@ -15,6 +15,16 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Some("launch") => match lifecycle::launch_kitty() {
+            Ok(()) => {
+                println!("plugin-kitty launch: kitty ready");
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                eprintln!("plugin-kitty launch: {err:#}");
+                ExitCode::from(1)
+            }
+        },
         Some("restore") => match lifecycle::restore() {
             Ok(n) => {
                 println!("plugin-kitty restore: launched {n} pane(s)");

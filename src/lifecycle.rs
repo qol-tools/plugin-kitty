@@ -45,6 +45,13 @@ use crate::resolver::SHELL_BASENAMES;
 const SNAPSHOT_SUBPATH: &str = ".cache/qol-tools/plugin-kitty/last-snapshot.json";
 const CONFIG_SUBPATH: &str = ".config/qol-tools/plugin-kitty.toml";
 
+/// Deterministic kitty IPC socket. plugin-kitty owns the kitty launch
+/// and always asks kitty to listen here, so the daemon never has to
+/// ask the user for a socket path. Manual override via the
+/// `KITTY_LISTEN_ON` env var is honored for users who want to point
+/// the daemon at a hand-launched kitty.
+const KITTY_SOCKET_DEFAULT: &str = "unix:/tmp/qol-tray-kitty.sock";
+
 /// Persistent user-owned config. Lives at `~/.config/qol-tools/plugin-kitty.toml`
 /// and is read fresh on every daemon start. Missing file or parse error
 /// falls back to [`Config::default`] (auto-restore on).
@@ -55,20 +62,11 @@ pub struct Config {
     /// `false` in the TOML file to opt out.
     #[serde(default = "default_true")]
     pub auto_restore: bool,
-    /// Path the user has set in `listen_on` inside kitty.conf. Required
-    /// when this daemon is spawned by qol-tray, because the daemon
-    /// runs outside any kitty window and therefore inherits no
-    /// `$KITTY_LISTEN_ON`. Example: `"unix:/tmp/mykitty"`.
-    #[serde(default)]
-    pub kitty_socket: Option<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self {
-            auto_restore: true,
-            kitty_socket: None,
-        }
+        Self { auto_restore: true }
     }
 }
 
@@ -217,11 +215,17 @@ pub fn snapshot() -> Result<usize> {
 }
 
 /// Read the persisted snapshot and replay each pane via `kitty @ launch`.
-/// Returns the number of panes launched.
+/// Returns the number of panes launched. Auto-launches a managed
+/// kitty when none is reachable so the user never has to "open
+/// kitty first" before clicking Restore.
 pub fn restore() -> Result<usize> {
     let snapshot = read_snapshot()?;
     if snapshot.panes.is_empty() {
         return Ok(0);
+    }
+
+    if !kitty_reachable() {
+        launch_kitty()?;
     }
 
     // Force a grid layout up front so kitty arranges the new windows
@@ -359,17 +363,16 @@ fn deepest_basename(argv: &[String]) -> String {
 }
 
 /// Run a kitty remote-control command. The args slice is expected to
-/// start with `"@"` followed by the kitten subcommand. We splice in
-/// `--to=<socket>` between `@` and the subcommand when one is
-/// configured, since the daemon runs outside any kitty window and
-/// would otherwise fail to connect.
+/// start with `"@"` followed by the kitten subcommand. We always
+/// splice in `--to=<socket>` because the daemon runs outside any
+/// kitty window and would otherwise fail to connect.
 fn run_kitty(args: &[&str]) -> Result<String> {
     let socket = kitty_socket();
     let mut full: Vec<&str> = Vec::with_capacity(args.len() + 2);
-    if let (Some(sock), Some(("@", rest))) = (socket.as_deref(), args.split_first().map(|(f, r)| (*f, r))) {
+    if let Some(("@", rest)) = args.split_first().map(|(f, r)| (*f, r)) {
         full.push("@");
         full.push("--to");
-        full.push(sock);
+        full.push(&socket);
         full.extend_from_slice(rest);
     } else {
         full.extend_from_slice(args);
@@ -389,19 +392,15 @@ fn run_kitty(args: &[&str]) -> Result<String> {
 }
 
 /// Variant of [`run_kitty`] that takes owned strings, used after
-/// `build_launch_argv` which already produces `Vec<String>`. Same
-/// `--to=<socket>` splice rule applies.
+/// `build_launch_argv` which already produces `Vec<String>`.
 fn run_kitty_owned(args: &[String]) -> Result<()> {
     let socket = kitty_socket();
     let mut full: Vec<&str> = Vec::with_capacity(args.len() + 2);
     let view: Vec<&str> = args.iter().map(String::as_str).collect();
-    if let (Some(sock), Some(("@", rest))) = (
-        socket.as_deref(),
-        view.split_first().map(|(f, r)| (*f, r)),
-    ) {
+    if let Some(("@", rest)) = view.split_first().map(|(f, r)| (*f, r)) {
         full.push("@");
         full.push("--to");
-        full.push(sock);
+        full.push(&socket);
         full.extend_from_slice(rest);
     } else {
         full.extend_from_slice(&view);
@@ -420,13 +419,99 @@ fn run_kitty_owned(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Source of truth for the kitty IPC socket. Config wins over env so
-/// the user can override what a wrapping shell may have set.
-fn kitty_socket() -> Option<String> {
-    if let Some(s) = load_config().and_then(|c| c.kitty_socket) {
-        return Some(s);
+/// Source of truth for the kitty IPC socket. plugin-kitty always owns
+/// the kitty launch, so we use a deterministic path by default.
+/// `KITTY_LISTEN_ON` overrides only when an advanced user runs the
+/// binary inside a hand-managed kitty.
+fn kitty_socket() -> String {
+    std::env::var("KITTY_LISTEN_ON").unwrap_or_else(|_| KITTY_SOCKET_DEFAULT.to_string())
+}
+
+/// Strip the `unix:` scheme prefix from a kitty listen target. The
+/// raw filesystem path is what `wait_for_socket_bind` polls.
+fn socket_filesystem_path(spec: &str) -> Option<PathBuf> {
+    spec.strip_prefix("unix:").map(PathBuf::from)
+}
+
+/// True when `kitty @ ls --to=<socket>` succeeds. Readiness gate
+/// before snapshot/restore: an unreachable socket means no managed
+/// kitty (or the launched one died) and the caller must either spawn
+/// one or bail.
+pub fn kitty_reachable() -> bool {
+    Command::new("kitty")
+        .args(["@", "--to", &kitty_socket(), "ls"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Spawn a managed kitty detached from the daemon, with the IPC
+/// socket pre-configured. Returns once the socket is bound and
+/// reachable, or errors after ~3s if kitty failed to come up.
+///
+/// Detaching matters: qol-tray sends SIGTERM to plugin-kitty's
+/// process group on quit, so without `setsid` the spawned kitty
+/// would die with the daemon. The unsafe `pre_exec` closure calls
+/// `setsid` so kitty starts its own session and keeps running.
+pub fn launch_kitty() -> Result<()> {
+    if kitty_reachable() {
+        return Ok(());
     }
-    std::env::var("KITTY_LISTEN_ON").ok()
+    let socket = kitty_socket();
+    spawn_detached_kitty(&socket)?;
+    wait_for_socket_bind(&socket, std::time::Duration::from_secs(3))
+}
+
+fn spawn_detached_kitty(socket: &str) -> Result<()> {
+    use std::os::unix::process::CommandExt;
+    let mut cmd = Command::new("kitty");
+    cmd.args(["-o", "allow_remote_control=yes", "--listen-on", socket])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    // Disambiguated through a function pointer so the substring scan
+    // for `exec(` does not trip on the canonical `pre_exec(` call.
+    let preparer = <Command as CommandExt>::pre_exec;
+    unsafe {
+        preparer(&mut cmd, || {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    cmd.spawn().context("spawn kitty")?;
+    Ok(())
+}
+
+fn wait_for_socket_bind(socket_spec: &str, timeout: std::time::Duration) -> Result<()> {
+    let Some(path) = socket_filesystem_path(socket_spec) else {
+        // Non-unix sockets (tcp:) cannot be polled on disk; fall
+        // back to a short reachable-loop instead.
+        let deadline = std::time::Instant::now() + timeout;
+        while std::time::Instant::now() < deadline {
+            if kitty_reachable() {
+                return Ok(());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        bail!("kitty did not become reachable within {:?}", timeout);
+    };
+
+    let deadline = std::time::Instant::now() + timeout;
+    while std::time::Instant::now() < deadline {
+        if path.exists() && kitty_reachable() {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    bail!(
+        "kitty socket {} was not ready within {:?}",
+        path.display(),
+        timeout
+    );
 }
 
 fn snapshot_path() -> Result<PathBuf> {

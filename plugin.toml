@@ -7,7 +7,7 @@ platforms = ["linux", "macos"]
 
 [runtime]
 command = "plugin-kitty"
-actions = { snapshot = ["snapshot"], restore = ["restore"], settings = ["settings"] }
+actions = { launch = ["launch"], snapshot = ["snapshot"], restore = ["restore"], settings = ["settings"] }
 
 [daemon]
 enabled = true
@@ -16,6 +16,7 @@ command = "plugin-kitty"
 [menu]
 label = "Kitty"
 items = [
+    { type = "action", id = "launch", label = "Open kitty", action = "run" },
     { type = "action", id = "snapshot", label = "Snapshot panes", action = "run" },
     { type = "action", id = "restore", label = "Restore panes", action = "run" },
     { type = "action", id = "settings", label = "Settings", action = "settings" },

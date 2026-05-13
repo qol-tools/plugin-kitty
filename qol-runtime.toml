@@ -1,7 +1,10 @@
 schema_version = 1
 
+[action.launch]
+description = "Open a managed kitty with allow_remote_control=yes and our deterministic listen socket"
+
 [action.snapshot]
 description = "Capture the current pane layout and Claude session ids to the snapshot file"
 
 [action.restore]
-description = "Replay the last snapshot via kitty @ launch (one window per pane)"
+description = "Replay the last snapshot via kitty @ launch (auto-opens kitty if not running)"

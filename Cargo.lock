@@ -3105,6 +3105,7 @@ dependencies = [
  "apple-codesign",
  "cap-std",
  "dirs 5.0.1",
+ "libc",
  "qol-plugin-api",
  "qol-runtime",
  "regex",

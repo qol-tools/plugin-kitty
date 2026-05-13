@@ -4,28 +4,28 @@ description = "Snapshot and restore the Claude session in every pane of your kit
 
 [section.general]
 label = "General"
-description = "How plugin-kitty talks to your running kitty and when it auto-restores."
+description = "When plugin-kitty auto-restores. The IPC socket is owned by the plugin so you never have to configure it."
 
 [field.auto_restore]
 type = "boolean"
 section = "general"
 config_key = "auto_restore"
 label = "Auto-restore on start"
-description = "When kitty has exactly one idle shell pane on plugin-kitty start, replay the last snapshot. Off-empty kitty is never touched."
+description = "When the managed kitty has exactly one idle shell pane on plugin-kitty start, replay the last snapshot. A non-empty kitty is never touched."
 default = true
-
-[field.kitty_socket]
-type = "string"
-section = "general"
-config_key = "kitty_socket"
-label = "Kitty IPC socket"
-description = "Value of `listen_on` from kitty.conf, e.g. unix:/tmp/mykitty. Required so the daemon (spawned outside kitty) can drive kitty @ ls / @ launch."
-default = ""
 
 [section.lifecycle]
 label = "Lifecycle"
-description = "Trigger a snapshot or restore manually."
-actions = ["snapshot", "restore"]
+description = "Open the managed kitty, then snapshot or restore."
+actions = ["launch", "snapshot", "restore"]
+
+[field.launch_kitty]
+type = "action"
+section = "lifecycle"
+label = "Open kitty"
+description = "Open a kitty that plugin-kitty can control (allow_remote_control + listen_on already set). Any existing kitty you launched manually is unaffected."
+action = "launch"
+variant = "primary"
 
 [field.snapshot_now]
 type = "action"
@@ -33,12 +33,12 @@ section = "lifecycle"
 label = "Snapshot panes now"
 description = "Capture the current pane layout + claude session ids into the snapshot file."
 action = "snapshot"
-variant = "primary"
+variant = "ghost"
 
 [field.restore_now]
 type = "action"
 section = "lifecycle"
 label = "Restore panes now"
-description = "Replay the last snapshot via kitty @ launch."
+description = "Replay the last snapshot via kitty @ launch. Auto-opens kitty first if not running."
 action = "restore"
 variant = "ghost"
