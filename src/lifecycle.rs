@@ -126,7 +126,7 @@ pub fn daemon_run() -> Result<()> {
 /// has no panes (probably not running yet) or already has live work.
 /// Returns `Err` if `kitty @ ls` itself failed.
 pub fn kitty_looks_empty() -> Result<bool> {
-    let payload = run_kitty(&["@", "ls", "--format=json"])?;
+    let payload = run_kitty(&["@", "ls"])?;
     let kls = parse_ls(&payload).map_err(|e| anyhow!("parse kitty ls: {e}"))?;
     let panes = kls.windows();
     if panes.len() != 1 {
@@ -190,7 +190,10 @@ pub struct Snapshot {
 /// Run `kitty @ ls --format=json`, resolve claims for every pane, and
 /// persist a snapshot. Returns the number of panes captured.
 pub fn snapshot() -> Result<usize> {
-    let payload = run_kitty(&["@", "ls", "--format=json"])?;
+    // kitty @ ls returns JSON by default; the explicit --format flag
+    // was dropped in kitty 0.42 and causes the parser to bail with
+    // "Unknown option: --format" before it even reads the target.
+    let payload = run_kitty(&["@", "ls"])?;
     let kls = parse_ls(&payload).map_err(|e| anyhow!("parse kitty ls: {e}"))?;
 
     let mut panes = Vec::new();
