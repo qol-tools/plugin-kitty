@@ -146,6 +146,22 @@ pub fn kitty_looks_empty() -> Result<bool> {
 }
 
 fn load_config() -> Option<Config> {
+    // Primary: the qol-tray-managed config.json the plugin dive UI
+    // writes to. Lives at <data_dir>/qol-tray/plugins/plugin-kitty/config.json
+    // (Application Support on macOS, ~/.local/share on Linux).
+    if let Some(data) = dirs::data_dir() {
+        let json_path = data
+            .join("qol-tray")
+            .join("plugins")
+            .join("plugin-kitty")
+            .join("config.json");
+        if let Ok(body) = fs::read_to_string(&json_path) {
+            if let Ok(cfg) = serde_json::from_str::<Config>(&body) {
+                return Some(cfg);
+            }
+        }
+    }
+    // Secondary: hand-rolled TOML for users who don't want the UI.
     let home = std::env::var("HOME").ok()?;
     let path = PathBuf::from(home).join(CONFIG_SUBPATH);
     let body = fs::read_to_string(&path).ok()?;

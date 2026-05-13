@@ -1,0 +1,44 @@
+schema_version = 1
+title = "Kitty"
+description = "Snapshot and restore the Claude session in every pane of your kitty window."
+
+[section.general]
+label = "General"
+description = "How plugin-kitty talks to your running kitty and when it auto-restores."
+
+[field.auto_restore]
+type = "boolean"
+section = "general"
+config_key = "auto_restore"
+label = "Auto-restore on start"
+description = "When kitty has exactly one idle shell pane on plugin-kitty start, replay the last snapshot. Off-empty kitty is never touched."
+default = true
+
+[field.kitty_socket]
+type = "string"
+section = "general"
+config_key = "kitty_socket"
+label = "Kitty IPC socket"
+description = "Value of `listen_on` from kitty.conf, e.g. unix:/tmp/mykitty. Required so the daemon (spawned outside kitty) can drive kitty @ ls / @ launch."
+default = ""
+
+[section.lifecycle]
+label = "Lifecycle"
+description = "Trigger a snapshot or restore manually."
+actions = ["snapshot", "restore"]
+
+[field.snapshot_now]
+type = "action"
+section = "lifecycle"
+label = "Snapshot panes now"
+description = "Capture the current pane layout + claude session ids into the snapshot file."
+action = "snapshot"
+variant = "primary"
+
+[field.restore_now]
+type = "action"
+section = "lifecycle"
+label = "Restore panes now"
+description = "Replay the last snapshot via kitty @ launch."
+action = "restore"
+variant = "ghost"
