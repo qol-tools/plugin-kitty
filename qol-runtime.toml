@@ -1,0 +1,7 @@
+schema_version = 1
+
+[action.snapshot]
+description = "Capture the current pane layout and Claude session ids to the snapshot file"
+
+[action.restore]
+description = "Replay the last snapshot via kitty @ launch (one window per pane)"
