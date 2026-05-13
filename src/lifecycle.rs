@@ -85,21 +85,20 @@ pub fn daemon_run() -> Result<()> {
     let config = load_config().unwrap_or_default();
     eprintln!("plugin-kitty daemon: auto_restore={}", config.auto_restore);
 
-    if config.auto_restore {
-        match kitty_looks_empty() {
-            Ok(true) => {
-                eprintln!("plugin-kitty daemon: kitty looks empty; auto-restoring");
-                match restore() {
-                    Ok(n) => eprintln!("plugin-kitty daemon: auto-restored {n} pane(s)"),
-                    Err(err) => eprintln!("plugin-kitty daemon: auto-restore failed: {err:#}"),
+    if config.auto_restore && should_auto_restore() {
+        eprintln!("plugin-kitty daemon: first daemon start this boot and kitty empty or absent; auto-restoring");
+        match restore() {
+            Ok(n) => {
+                eprintln!("plugin-kitty daemon: auto-restored {n} pane(s)");
+                if let Some(id) = crate::platform::current_boot_id() {
+                    if let Err(err) = write_last_restored_boot_id(&id) {
+                        eprintln!(
+                            "plugin-kitty daemon: failed to persist boot-id marker: {err:#}"
+                        );
+                    }
                 }
             }
-            Ok(false) => {
-                eprintln!("plugin-kitty daemon: kitty not idle-empty; skip auto-restore");
-            }
-            Err(err) => {
-                eprintln!("plugin-kitty daemon: skip auto-restore: {err:#}");
-            }
+            Err(err) => eprintln!("plugin-kitty daemon: auto-restore failed: {err:#}"),
         }
     }
 
@@ -113,6 +112,57 @@ pub fn daemon_run() -> Result<()> {
         }
         break;
     }
+    Ok(())
+}
+
+/// True when the daemon should auto-restore the previous session.
+///
+/// Gated on the machine boot id: auto-restore fires at most once per
+/// boot. qol-tray Recompile, daemon supervisor respawn, and manifest
+/// reloads do NOT re-trigger restore (same boot id). Triggers:
+/// - boot id differs from the persisted last-restored marker, AND
+/// - either kitty is unreachable and a snapshot exists, OR kitty is
+///   reachable and [`kitty_looks_empty`] sees one idle shell pane.
+///
+/// Boot id unreadable (rare): falls through to the kitty-state
+/// heuristic so behaviour degrades to the pre-gating logic.
+fn should_auto_restore() -> bool {
+    if let Some(current) = crate::platform::current_boot_id() {
+        if Some(&current) == read_last_restored_boot_id().as_ref() {
+            return false;
+        }
+    }
+    if !kitty_reachable() {
+        return snapshot_exists();
+    }
+    kitty_looks_empty().unwrap_or(false)
+}
+
+fn snapshot_exists() -> bool {
+    snapshot_path().map(|p| p.exists()).unwrap_or(false)
+}
+
+const BOOT_ID_MARKER_SUBPATH: &str = ".cache/qol-tools/plugin-kitty/last-restored-boot-id";
+
+fn boot_id_marker_path() -> Result<PathBuf> {
+    let home = std::env::var("HOME").context("$HOME unset")?;
+    Ok(PathBuf::from(home).join(BOOT_ID_MARKER_SUBPATH))
+}
+
+fn read_last_restored_boot_id() -> Option<String> {
+    let path = boot_id_marker_path().ok()?;
+    fs::read_to_string(&path)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn write_last_restored_boot_id(boot_id: &str) -> Result<()> {
+    let path = boot_id_marker_path()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&path, boot_id)?;
     Ok(())
 }
 

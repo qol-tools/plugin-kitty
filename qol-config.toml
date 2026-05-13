@@ -11,7 +11,7 @@ type = "boolean"
 section = "general"
 config_key = "auto_restore"
 label = "Auto-restore on start"
-description = "When the managed kitty has exactly one idle shell pane on plugin-kitty start, replay the last snapshot. A non-empty kitty is never touched."
+description = "Replay the last snapshot on plugin-kitty start when kitty is not running, or has exactly one idle shell pane. A non-empty kitty is never touched."
 default = true
 
 [section.lifecycle]
