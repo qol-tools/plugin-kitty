@@ -1,10 +1,34 @@
 use std::env;
 use std::process::ExitCode;
 
+use plugin_kitty::lifecycle;
+
 fn main() -> ExitCode {
     match env::args().nth(1).as_deref() {
+        Some("snapshot") => match lifecycle::snapshot() {
+            Ok(n) => {
+                println!("plugin-kitty snapshot: captured {n} pane(s)");
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                eprintln!("plugin-kitty snapshot: {err:#}");
+                ExitCode::from(1)
+            }
+        },
+        Some("restore") => match lifecycle::restore() {
+            Ok(n) => {
+                println!("plugin-kitty restore: launched {n} pane(s)");
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                eprintln!("plugin-kitty restore: {err:#}");
+                ExitCode::from(1)
+            }
+        },
         None | Some("run") => {
-            println!("plugin-kitty: lifecycle daemon (placeholder)");
+            println!(
+                "plugin-kitty: invoke `snapshot` before reboot and `restore` afterwards"
+            );
             ExitCode::SUCCESS
         }
         Some("settings") => {

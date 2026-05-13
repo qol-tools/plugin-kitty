@@ -7,12 +7,13 @@ platforms = ["linux", "macos"]
 
 [runtime]
 command = "plugin-kitty"
-actions = { run = ["run"], settings = ["settings"] }
+actions = { snapshot = ["snapshot"], restore = ["restore"], settings = ["settings"] }
 
 [menu]
 label = "Kitty"
 items = [
-    { type = "action", id = "run", label = "Run", action = "run" },
+    { type = "action", id = "snapshot", label = "Snapshot panes", action = "run" },
+    { type = "action", id = "restore", label = "Restore panes", action = "run" },
     { type = "action", id = "settings", label = "Settings", action = "settings" },
 ]
 

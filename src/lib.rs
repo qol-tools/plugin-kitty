@@ -11,5 +11,6 @@
 
 pub mod dispatcher;
 pub mod kitty;
+pub mod lifecycle;
 pub mod registry;
 pub mod resolver;
