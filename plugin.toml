@@ -12,7 +12,6 @@ actions = { snapshot = ["snapshot"], restore = ["restore"], settings = ["setting
 [daemon]
 enabled = true
 command = "plugin-kitty"
-socket = "/tmp/plugin-kitty.sock"
 
 [menu]
 label = "Kitty"

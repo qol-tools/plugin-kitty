@@ -55,11 +55,20 @@ pub struct Config {
     /// `false` in the TOML file to opt out.
     #[serde(default = "default_true")]
     pub auto_restore: bool,
+    /// Path the user has set in `listen_on` inside kitty.conf. Required
+    /// when this daemon is spawned by qol-tray, because the daemon
+    /// runs outside any kitty window and therefore inherits no
+    /// `$KITTY_LISTEN_ON`. Example: `"unix:/tmp/mykitty"`.
+    #[serde(default)]
+    pub kitty_socket: Option<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { auto_restore: true }
+        Self {
+            auto_restore: true,
+            kitty_socket: None,
+        }
     }
 }
 
@@ -330,11 +339,30 @@ fn deepest_basename(argv: &[String]) -> String {
     }
 }
 
+/// Run a kitty remote-control command. The args slice is expected to
+/// start with `"@"` followed by the kitten subcommand. We splice in
+/// `--to=<socket>` between `@` and the subcommand when one is
+/// configured, since the daemon runs outside any kitty window and
+/// would otherwise fail to connect.
 fn run_kitty(args: &[&str]) -> Result<String> {
-    let out = Command::new("kitty").args(args).output().context("spawn kitty")?;
+    let socket = kitty_socket();
+    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 2);
+    if let (Some(sock), Some(("@", rest))) = (socket.as_deref(), args.split_first().map(|(f, r)| (*f, r))) {
+        full.push("@");
+        full.push("--to");
+        full.push(sock);
+        full.extend_from_slice(rest);
+    } else {
+        full.extend_from_slice(args);
+    }
+
+    let out = Command::new("kitty")
+        .args(&full)
+        .output()
+        .context("spawn kitty")?;
     if !out.status.success() {
         bail!(
-            "kitty {args:?} failed: {}",
+            "kitty {full:?} failed: {}",
             String::from_utf8_lossy(&out.stderr).trim()
         );
     }
@@ -342,9 +370,28 @@ fn run_kitty(args: &[&str]) -> Result<String> {
 }
 
 /// Variant of [`run_kitty`] that takes owned strings, used after
-/// `build_launch_argv` which already produces `Vec<String>`.
+/// `build_launch_argv` which already produces `Vec<String>`. Same
+/// `--to=<socket>` splice rule applies.
 fn run_kitty_owned(args: &[String]) -> Result<()> {
-    let out = Command::new("kitty").args(args).output().context("spawn kitty")?;
+    let socket = kitty_socket();
+    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 2);
+    let view: Vec<&str> = args.iter().map(String::as_str).collect();
+    if let (Some(sock), Some(("@", rest))) = (
+        socket.as_deref(),
+        view.split_first().map(|(f, r)| (*f, r)),
+    ) {
+        full.push("@");
+        full.push("--to");
+        full.push(sock);
+        full.extend_from_slice(rest);
+    } else {
+        full.extend_from_slice(&view);
+    }
+
+    let out = Command::new("kitty")
+        .args(&full)
+        .output()
+        .context("spawn kitty")?;
     if !out.status.success() {
         bail!(
             "kitty launch failed: {}",
@@ -352,6 +399,15 @@ fn run_kitty_owned(args: &[String]) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Source of truth for the kitty IPC socket. Config wins over env so
+/// the user can override what a wrapping shell may have set.
+fn kitty_socket() -> Option<String> {
+    if let Some(s) = load_config().and_then(|c| c.kitty_socket) {
+        return Some(s);
+    }
+    std::env::var("KITTY_LISTEN_ON").ok()
 }
 
 fn snapshot_path() -> Result<PathBuf> {
