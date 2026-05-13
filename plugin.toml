@@ -9,6 +9,11 @@ platforms = ["linux", "macos"]
 command = "plugin-kitty"
 actions = { snapshot = ["snapshot"], restore = ["restore"], settings = ["settings"] }
 
+[daemon]
+enabled = true
+command = "plugin-kitty"
+socket = "/tmp/plugin-kitty.sock"
+
 [menu]
 label = "Kitty"
 items = [

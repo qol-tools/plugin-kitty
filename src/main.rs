@@ -25,12 +25,13 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
-        None | Some("run") => {
-            println!(
-                "plugin-kitty: invoke `snapshot` before reboot and `restore` afterwards"
-            );
-            ExitCode::SUCCESS
-        }
+        None | Some("daemon") | Some("run") => match lifecycle::daemon_run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("plugin-kitty daemon: {err:#}");
+                ExitCode::from(1)
+            }
+        },
         Some("settings") => {
             println!("plugin-kitty: settings (placeholder)");
             ExitCode::SUCCESS

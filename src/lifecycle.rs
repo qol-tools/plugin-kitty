@@ -34,6 +34,8 @@ use std::process::{Command, Stdio};
 use anyhow::{anyhow, bail, Context, Result};
 use qol_plugin_api::restore::{ForegroundProc, PaneSnapshot, RestoreClaim};
 use serde::{Deserialize, Serialize};
+use signal_hook::consts::{SIGINT, SIGTERM};
+use signal_hook::iterator::Signals;
 
 use crate::kitty::{
     build_launch_argv, parse_ls, KittyWindow, LaunchPlan, LaunchType, PaneLocation,
@@ -41,6 +43,105 @@ use crate::kitty::{
 use crate::resolver::SHELL_BASENAMES;
 
 const SNAPSHOT_SUBPATH: &str = ".cache/qol-tools/plugin-kitty/last-snapshot.json";
+const CONFIG_SUBPATH: &str = ".config/qol-tools/plugin-kitty.toml";
+
+/// Persistent user-owned config. Lives at `~/.config/qol-tools/plugin-kitty.toml`
+/// and is read fresh on every daemon start. Missing file or parse error
+/// falls back to [`Config::default`] (auto-restore on).
+#[derive(Debug, Clone, Deserialize)]
+pub struct Config {
+    /// When `true`, the daemon's start-up pass calls [`restore`] iff
+    /// [`kitty_looks_empty`] returns `true`. Defaults to `true`; set to
+    /// `false` in the TOML file to opt out.
+    #[serde(default = "default_true")]
+    pub auto_restore: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self { auto_restore: true }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Long-running daemon entry. Runs the auto-restore probe on start,
+/// then blocks until SIGTERM / SIGINT and snapshots before exiting.
+///
+/// SIGTERM is what qol-tray sends when it stops plugin daemons (quit,
+/// Recompile, system shutdown), so the snapshot lands on every clean
+/// teardown. SIGINT is mainly useful when the daemon is run by hand
+/// for debugging.
+pub fn daemon_run() -> Result<()> {
+    let config = load_config().unwrap_or_default();
+    eprintln!("plugin-kitty daemon: auto_restore={}", config.auto_restore);
+
+    if config.auto_restore {
+        match kitty_looks_empty() {
+            Ok(true) => {
+                eprintln!("plugin-kitty daemon: kitty looks empty; auto-restoring");
+                match restore() {
+                    Ok(n) => eprintln!("plugin-kitty daemon: auto-restored {n} pane(s)"),
+                    Err(err) => eprintln!("plugin-kitty daemon: auto-restore failed: {err:#}"),
+                }
+            }
+            Ok(false) => {
+                eprintln!("plugin-kitty daemon: kitty not idle-empty; skip auto-restore");
+            }
+            Err(err) => {
+                eprintln!("plugin-kitty daemon: skip auto-restore: {err:#}");
+            }
+        }
+    }
+
+    let mut signals =
+        Signals::new([SIGTERM, SIGINT]).context("install SIGTERM/SIGINT handler")?;
+    for sig in signals.forever() {
+        eprintln!("plugin-kitty daemon: signal {sig}; snapshotting before exit");
+        match snapshot() {
+            Ok(n) => eprintln!("plugin-kitty daemon: captured {n} pane(s) on shutdown"),
+            Err(err) => eprintln!("plugin-kitty daemon: shutdown snapshot failed: {err:#}"),
+        }
+        break;
+    }
+    Ok(())
+}
+
+/// Heuristic: does the current kitty session look like "freshly opened,
+/// nothing claude in it yet, safe to clobber with a restore"?
+///
+/// Returns `Ok(true)` only when there is exactly one pane and its
+/// deepest foreground process is a shell. Returns `Ok(false)` if kitty
+/// has no panes (probably not running yet) or already has live work.
+/// Returns `Err` if `kitty @ ls` itself failed.
+pub fn kitty_looks_empty() -> Result<bool> {
+    let payload = run_kitty(&["@", "ls", "--format=json"])?;
+    let kls = parse_ls(&payload).map_err(|e| anyhow!("parse kitty ls: {e}"))?;
+    let panes = kls.windows();
+    if panes.len() != 1 {
+        return Ok(false);
+    }
+    let Some(cmdline) = panes[0].foreground_cmdline() else {
+        return Ok(false);
+    };
+    let Some(first) = cmdline.first() else {
+        return Ok(false);
+    };
+    let base = Path::new(first)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(first);
+    Ok(SHELL_BASENAMES.contains(&base))
+}
+
+fn load_config() -> Option<Config> {
+    let home = std::env::var("HOME").ok()?;
+    let path = PathBuf::from(home).join(CONFIG_SUBPATH);
+    let body = fs::read_to_string(&path).ok()?;
+    toml::from_str(&body).ok()
+}
 
 /// One pane's worth of persisted snapshot state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
